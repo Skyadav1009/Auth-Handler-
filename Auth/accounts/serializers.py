@@ -1,7 +1,12 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import UserProfile
+from .models import UserProfile, Inventory
 
+class InventorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Inventory
+        fields = ('id', 'inventory_name', 'price', 'date')
+        
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True, required=True, style={
@@ -16,8 +21,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate_role(self, value):
         if value.lower() == 'admin':
             raise serializers.ValidationError("Admin registration is not allowed. Only one admin exists.")
-        if value.lower() not in ['staff', 'employee']:
-            raise serializers.ValidationError("Role does not exist. Please choose either 'staff' or 'employee'.")
+        if value.lower() not in ['staff', 'employee', 'seller']:
+            raise serializers.ValidationError("Role does not exist. Please choose either 'staff', 'employee', or 'seller'.")
         return value.lower()
 
     def validate_email(self, value):
@@ -38,6 +43,35 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         
         # Create user profile with the selected role
         UserProfile.objects.create(user=user, role=role_value)
+        return user
+
+
+class SellerRegistrationSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(
+        write_only=True, required=True, style={
+            'input_type': 'password'})
+
+    class Meta:
+        model = User
+        fields = ('username', 'email', 'password')
+        extra_kwargs = {'email': {'required': True}}
+
+    def validate_email(self, value):
+        if not value.endswith('@gmail.com'):
+            raise serializers.ValidationError(
+                'Only @gmail.com email addresses are allowed.')
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError(
+                'A user with this email already exists.')
+        return value
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password']
+        )
+        UserProfile.objects.create(user=user, role='seller', user_type='seller')
         return user
 
 

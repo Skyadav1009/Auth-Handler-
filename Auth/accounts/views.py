@@ -5,8 +5,39 @@ from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from .serializers import UserRegistrationSerializer, UpdateUsernameSerializer
+from .serializers import UserRegistrationSerializer, UpdateUsernameSerializer, SellerRegistrationSerializer, InventorySerializer
+from .models import Inventory
 
+class InventoryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(request_body=InventorySerializer)
+    def post(self, request):
+        if not hasattr(request.user, 'profile') or request.user.profile.role != 'seller':
+            return Response({'error': 'Only sellers can add inventories.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        serializer = InventorySerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request):
+        inventories = Inventory.objects.filter(user=request.user)
+        serializer = InventorySerializer(inventories, many=True)
+        return Response(serializer.data)
+
+class SellerRegisterView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @swagger_auto_schema(request_body=SellerRegistrationSerializer, operation_description="Endpoint specifically for Seller Registration. Automatically assigns 'seller' role.")
+    def post(self, request):
+        serializer = SellerRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {'message': 'Seller registered successfully.'}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
