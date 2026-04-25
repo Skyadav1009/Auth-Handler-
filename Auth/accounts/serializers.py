@@ -1,65 +1,37 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
-from .models import UserProfile, Inventory
+from django.contrib.auth import get_user_model
+from .models import InventorySale
 
-class InventorySerializer(serializers.ModelSerializer):
+User = get_user_model()
+
+class InventorySaleSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Inventory
-        fields = ('id', 'inventory_name', 'price', 'date')
+        model = InventorySale
+        fields = ('id', 'inventory_name', 'price', 'quantity', 'date', 'salesman')
+        read_only_fields = ('salesman',)
         
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True, required=True, style={
             'input_type': 'password'})
-    role = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
         fields = ('username', 'email', 'password', 'role')
-        extra_kwargs = {'email': {'required': True}}
+        extra_kwargs = {'email': {'required': True}, 'role': {'required': True}}
 
     def validate_role(self, value):
-        if value.lower() == 'admin':
-            raise serializers.ValidationError("Admin registration is not allowed. Only one admin exists.")
-        if value.lower() not in ['staff', 'employee', 'seller']:
-            raise serializers.ValidationError("Role does not exist. Please choose either 'staff', 'employee', or 'seller'.")
-        return value.lower()
-
-    def validate_email(self, value):
-        if not value.endswith('@gmail.com'):
-            raise serializers.ValidationError(
-                'Only @gmail.com email addresses are allowed.')
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(
-                'A user with this email already exists.')
-        return value
-
-    def create(self, validated_data):
-        role_value = validated_data.pop('role')
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data['email'],
-            password=validated_data['password'])
+        role_lower = value.lower()
+        if role_lower not in ['admin', 'employee', 'salesman']:
+            raise serializers.ValidationError("Role does not exist. Please choose either 'admin', 'employee', or 'salesman'.")
         
-        # Create user profile with the selected role
-        UserProfile.objects.create(user=user, role=role_value)
-        return user
-
-
-class SellerRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(
-        write_only=True, required=True, style={
-            'input_type': 'password'})
-
-    class Meta:
-        model = User
-        fields = ('username', 'email', 'password')
-        extra_kwargs = {'email': {'required': True}}
+        if role_lower == 'admin':
+            if User.objects.filter(role='admin').exists():
+                raise serializers.ValidationError("invalid email for admin")
+                
+        return role_lower
 
     def validate_email(self, value):
-        if not value.endswith('@gmail.com'):
-            raise serializers.ValidationError(
-                'Only @gmail.com email addresses are allowed.')
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError(
                 'A user with this email already exists.')
@@ -67,11 +39,11 @@ class SellerRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = User.objects.create_user(
-            username=validated_data['username'],
             email=validated_data['email'],
-            password=validated_data['password']
+            password=validated_data['password'],
+            username=validated_data.get('username', ''),
+            role=validated_data['role']
         )
-        UserProfile.objects.create(user=user, role='seller', user_type='seller')
         return user
 
 
@@ -90,7 +62,6 @@ class UpdateUsernameSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'date_joined')
+        fields = ('email', 'username', 'role', 'date_joined')

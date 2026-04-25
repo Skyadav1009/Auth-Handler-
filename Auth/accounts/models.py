@@ -1,37 +1,55 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.utils import timezone
 
-class UserProfile(models.Model):
-    ROLE_CHOICES = [
-        ('staff', 'Staff'),
+class CustomUserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('The Email field must be set')
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        # We are ignoring superadmin as per request but Django needs this method
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('role', 'admin')
+
+        return self.create_user(email, password, **extra_fields)
+
+class User(AbstractBaseUser, PermissionsMixin):
+    ROLE_CHOICES = (
+        ('admin', 'Admin'),
         ('employee', 'Employee'),
-        ('seller', 'Seller'),
-    ]
-    USER_TYPE_CHOICES = (
-        ("seller", "Seller"),
-        ("customer", "Customer"),
-        ("staff", "Staff"),
+        ('salesman', 'Salesman'),
     )
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    email = models.EmailField(primary_key=True, unique=True)
+    username = models.CharField(max_length=150, blank=True, null=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='customer')
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
     
-    # New fields added safely as nullable to not break existing data
-    gender = models.CharField(max_length=10, null=True, blank=True)
-    age = models.IntegerField(null=True, blank=True)
-    salary = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    is_staff = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    date_joined = models.DateTimeField(default=timezone.now)
+
+    objects = CustomUserManager()
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
 
     def __str__(self):
-        return f"{self.user.username} - {self.role}"
+        return f"{self.email} - {self.role}"
 
-
-class Inventory(models.Model):
+class InventorySale(models.Model):
     inventory_name = models.CharField(max_length=100)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    date = models.DateField()
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='inventories')
+    quantity = models.IntegerField(default=1)
+    date = models.DateField(default=timezone.now)
+    salesman = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sales')
 
     def __str__(self):
-        return f"{self.inventory_name} - {self.user.username}"
+        return f"{self.inventory_name} - {self.salesman.email}"
+
 

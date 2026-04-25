@@ -44,7 +44,7 @@ WSGI_APPLICATION = 'auth_project.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'auth',
+        'NAME': 'auth2',
         'USER': 'postgres',
         'PASSWORD': '192305',
         'HOST': 'localhost',
@@ -83,6 +83,8 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'email',
+    'USER_ID_CLAIM': 'email',
 }
 SWAGGER_SETTINGS = {
     'USE_SESSION_AUTH': False,
@@ -96,3 +98,5 @@ SWAGGER_SETTINGS = {
 }
 
 
+
+AUTH_USER_MODEL = 'accounts.User'

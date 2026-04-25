@@ -1,43 +1,72 @@
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from .serializers import UserRegistrationSerializer, UpdateUsernameSerializer, SellerRegistrationSerializer, InventorySerializer
-from .models import Inventory
+from .serializers import UserRegistrationSerializer, UpdateUsernameSerializer, InventorySaleSerializer
+from .models import InventorySale
 
-class InventoryView(APIView):
+User = get_user_model()
+
+class InventorySaleView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    @swagger_auto_schema(request_body=InventorySerializer)
+    @swagger_auto_schema(request_body=InventorySaleSerializer)
     def post(self, request):
-        if not hasattr(request.user, 'profile') or request.user.profile.role != 'seller':
-            return Response({'error': 'Only sellers can add inventories.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role != 'salesman':
+            return Response({'error': 'Only salesman can add inventories.'}, status=status.HTTP_403_FORBIDDEN)
             
-        serializer = InventorySerializer(data=request.data)
+        serializer = InventorySaleSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(user=request.user)
+            serializer.save(salesman=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @swagger_auto_schema(manual_parameters=[
+        openapi.Parameter('email', openapi.IN_QUERY, description="Salesman email (Admin only)", type=openapi.TYPE_STRING),
+        openapi.Parameter('date', openapi.IN_QUERY, description="Filter by date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+        openapi.Parameter('sort', openapi.IN_QUERY, description="Sort by date (asc or desc, default desc)", type=openapi.TYPE_STRING)
+    ])
     def get(self, request):
-        inventories = Inventory.objects.filter(user=request.user)
-        serializer = InventorySerializer(inventories, many=True)
-        return Response(serializer.data)
-
-class SellerRegisterView(APIView):
-    permission_classes = [permissions.AllowAny]
-
-    @swagger_auto_schema(request_body=SellerRegistrationSerializer, operation_description="Endpoint specifically for Seller Registration. Automatically assigns 'seller' role.")
-    def post(self, request):
-        serializer = SellerRegistrationSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {'message': 'Seller registered successfully.'}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if request.user.role == 'admin':
+            email = request.query_params.get('email')
+            date_filter = request.query_params.get('date')
+            sort_order = request.query_params.get('sort', 'desc')
+            
+            inventories = InventorySale.objects.all()
+            if email:
+                inventories = inventories.filter(salesman__email=email)
+            if date_filter:
+                inventories = inventories.filter(date=date_filter)
+                
+            if sort_order == 'asc':
+                inventories = inventories.order_by('date')
+            else:
+                inventories = inventories.order_by('-date')
+                
+            serializer = InventorySaleSerializer(inventories, many=True)
+            
+            total_items = sum(item.quantity for item in inventories)
+            total_revenue = sum((item.quantity * item.price) for item in inventories)
+            
+            return Response({
+                'summary': {
+                    'total_items_sold': total_items,
+                    'total_revenue': total_revenue
+                },
+                'sales': serializer.data
+            })
+            
+        elif request.user.role == 'salesman':
+            inventories = InventorySale.objects.filter(salesman=request.user).order_by('-date')
+            serializer = InventorySaleSerializer(inventories, many=True)
+            return Response({
+                'sales': serializer.data
+            })
+        else:
+            return Response({'error': 'You do not have permission to view sales.'}, status=status.HTTP_403_FORBIDDEN)
 
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
